@@ -14,6 +14,7 @@
 """
 Hub utilities: utilities related to download and cache models
 """
+
 import json
 import os
 import re
@@ -64,7 +65,9 @@ from .import_utils import (
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-_is_offline_mode = True if os.environ.get("TRANSFORMERS_OFFLINE", "0").upper() in ENV_VARS_TRUE_VALUES else False
+_is_offline_mode = (
+    os.environ.get("TRANSFORMERS_OFFLINE", "0").upper() in ENV_VARS_TRUE_VALUES
+)
 
 
 def is_offline_mode():
@@ -121,7 +124,9 @@ if os.environ.get("HUGGINGFACE_CO_RESOLVE_ENDPOINT", None) is not None:
     HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HUGGINGFACE_CO_RESOLVE_ENDPOINT", None)
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", HUGGINGFACE_CO_RESOLVE_ENDPOINT)
 HUGGINGFACE_CO_PREFIX = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/{model_id}/resolve/{revision}/{filename}"
-HUGGINGFACE_CO_EXAMPLES_TELEMETRY = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/api/telemetry/examples"
+HUGGINGFACE_CO_EXAMPLES_TELEMETRY = (
+    f"{HUGGINGFACE_CO_RESOLVE_ENDPOINT}/api/telemetry/examples"
+)
 
 # Return value when trying to load a file from cache but the file does not exist in the distant repo.
 _CACHED_NO_EXIST = object()
@@ -177,10 +182,12 @@ def define_sagemaker_information():
         dlc_tag = None
 
     sagemaker_params = json.loads(os.getenv("SM_FRAMEWORK_PARAMS", "{}"))
-    runs_distributed_training = True if "sagemaker_distributed_dataparallel_enabled" in sagemaker_params else False
+    runs_distributed_training = (
+        "sagemaker_distributed_dataparallel_enabled" in sagemaker_params
+    )
     account_id = os.getenv("TRAINING_JOB_ARN").split(":")[4] if "TRAINING_JOB_ARN" in os.environ else None
 
-    sagemaker_object = {
+    return {
         "sm_framework": os.getenv("SM_FRAMEWORK_MODULE", None),
         "sm_region": os.getenv("AWS_REGION", None),
         "sm_number_gpu": os.getenv("SM_NUM_GPUS", 0),
@@ -190,7 +197,6 @@ def define_sagemaker_information():
         "sm_deep_learning_container_tag": dlc_tag,
         "sm_account_id": account_id,
     }
-    return sagemaker_object
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
@@ -203,7 +209,7 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     if is_tf_available():
         ua += f"; tensorflow/{_tf_version}"
     if DISABLE_TELEMETRY:
-        return ua + "; telemetry/off"
+        return f"{ua}; telemetry/off"
     if is_training_run_on_sagemaker():
         ua += "; " + "; ".join(f"{k}/{v}" for k, v in define_sagemaker_information().items())
     # CI will set this value to True
@@ -212,7 +218,7 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     if isinstance(user_agent, dict):
         ua += "; " + "; ".join(f"{k}/{v}" for k, v in user_agent.items())
     elif isinstance(user_agent, str):
-        ua += "; " + user_agent
+        ua += f"; {user_agent}"
     return ua
 
 
@@ -277,9 +283,7 @@ def try_to_load_from_cache(
     # Resolve refs (for instance to convert main to the associated commit sha)
     cached_refs = os.listdir(os.path.join(repo_cache, "refs"))
     if revision in cached_refs:
-        with open(os.path.join(repo_cache, "refs", revision)) as f:
-            revision = f.read()
-
+        revision = Path(os.path.join(repo_cache, "refs", revision)).read_text()
     if os.path.isfile(os.path.join(repo_cache, ".no_exist", revision, filename)):
         return _CACHED_NO_EXIST
 
@@ -409,7 +413,7 @@ def cached_file(
         resolved_file = hf_hub_download(
             path_or_repo_id,
             filename,
-            subfolder=None if len(subfolder) == 0 else subfolder,
+            subfolder=None if not subfolder else subfolder,
             revision=revision,
             cache_dir=cache_dir,
             user_agent=user_agent,
@@ -701,9 +705,12 @@ class PushToHubMixin:
             for f in os.listdir(working_dir)
             if f not in files_timestamps or os.path.getmtime(os.path.join(working_dir, f)) > files_timestamps[f]
         ]
-        operations = []
-        for file in modified_files:
-            operations.append(CommitOperationAdd(path_or_fileobj=os.path.join(working_dir, file), path_in_repo=file))
+        operations = [
+            CommitOperationAdd(
+                path_or_fileobj=os.path.join(working_dir, file), path_in_repo=file
+            )
+            for file in modified_files
+        ]
         logger.info(f"Uploading the following files to {repo_id}: {','.join(modified_files)}")
         return create_commit(
             repo_id=repo_id, operations=operations, commit_message=commit_message, token=token, create_pr=create_pr
@@ -797,11 +804,10 @@ class PushToHubMixin:
 def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
     if token is None:
         token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
+    if organization is not None:
         return f"{organization}/{model_id}"
+    username = whoami(token)["name"]
+    return f"{username}/{model_id}"
 
 
 def send_example_telemetry(example_name, *example_args, framework="pytorch"):
@@ -960,10 +966,7 @@ def get_all_cached_files(cache_dir=None):
     """
     Returns a list for all files cached with appropriate metadata.
     """
-    if cache_dir is None:
-        cache_dir = TRANSFORMERS_CACHE
-    else:
-        cache_dir = str(cache_dir)
+    cache_dir = TRANSFORMERS_CACHE if cache_dir is None else str(cache_dir)
     if not os.path.isdir(cache_dir):
         return []
 
@@ -1035,10 +1038,7 @@ def move_cache(cache_dir=None, new_cache_dir=None, token=None):
     if cache_dir is None:
         # Migrate from old cache in .cache/huggingface/hub
         old_cache = Path(TRANSFORMERS_CACHE).parent / "transformers"
-        if os.path.isdir(str(old_cache)):
-            cache_dir = str(old_cache)
-        else:
-            cache_dir = new_cache_dir
+        cache_dir = str(old_cache) if os.path.isdir(str(old_cache)) else new_cache_dir
     if token is None:
         token = HfFolder.get_token()
     cached_files = get_all_cached_files(cache_dir=cache_dir)

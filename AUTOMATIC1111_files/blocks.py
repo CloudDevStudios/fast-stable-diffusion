@@ -185,11 +185,10 @@ class Block:
 
         if isinstance(outputs, set):
             outputs = sorted(outputs, key=lambda x: x._id)
-        else:
-            if outputs is None:
-                outputs = []
-            elif not isinstance(outputs, list):
-                outputs = [outputs]
+        elif outputs is None:
+            outputs = []
+        elif not isinstance(outputs, list):
+            outputs = [outputs]
 
         if fn is not None and not cancels:
             check_function_inputs_match(fn, inputs, inputs_as_dict)
@@ -206,10 +205,11 @@ class Block:
                 "Either batch is True or every is non-zero but not both."
             )
 
-        if every and fn:
-            fn = get_continuous_fn(fn, every)
-        elif every:
-            raise ValueError("Cannot set a value for `every` without a `fn`.")
+        if every:
+            if fn:
+                fn = get_continuous_fn(fn, every)
+            else:
+                raise ValueError("Cannot set a value for `every` without a `fn`.")
 
         _, progress_index, event_data_index = (
             special_args(fn) if fn else (None, None, None)
@@ -229,10 +229,8 @@ class Block:
             api_name_ = utils.append_unique_suffix(
                 api_name, [dep["api_name"] for dep in Context.root_block.dependencies]
             )
-            if not (api_name == api_name_):
-                warnings.warn(
-                    "api_name {} already exists, using {}".format(api_name, api_name_)
-                )
+            if api_name != api_name_:
+                warnings.warn(f"api_name {api_name} already exists, using {api_name_}")
                 api_name = api_name_
 
         if collects_event_data is None:
@@ -282,8 +280,7 @@ class Block:
     def get_specific_update(cls, generic_update: Dict[str, Any]) -> Dict:
         generic_update = generic_update.copy()
         del generic_update["__type__"]
-        specific_update = cls.update(**generic_update)
-        return specific_update
+        return cls.update(**generic_update)
 
 
 class BlockContext(Block):
@@ -541,7 +538,7 @@ class Blocks(BlockContext):
         self.height = None
         self.api_open = True
 
-        self.is_space = True if os.getenv("SYSTEM") == "spaces" else False
+        self.is_space = os.getenv("SYSTEM") == "spaces"
         self.favicon_path = None
         self.auth = None
         self.dev_mode = True
@@ -599,7 +596,7 @@ class Blocks(BlockContext):
             block_config["props"].pop("name", None)
             style = block_config["props"].pop("style", None)
             if block_config["props"].get("root_url") is None and root_url:
-                block_config["props"]["root_url"] = root_url + "/"
+                block_config["props"]["root_url"] = f"{root_url}/"
             # Any component has already processed its initial value, so we skip that step here
             block = cls(**block_config["props"], _skip_init_processing=True)
             if style and isinstance(block, components.IOComponent):
@@ -690,11 +687,11 @@ class Blocks(BlockContext):
                 repr += "\n inputs:"
                 for input_id in dependency["inputs"]:
                     block = self.blocks[input_id]
-                    repr += "\n |-{}".format(str(block))
+                    repr += f"\n |-{str(block)}"
                 repr += "\n outputs:"
                 for output_id in dependency["outputs"]:
                     block = self.blocks[output_id]
-                    repr += "\n |-{}".format(str(block))
+                    repr += f"\n |-{str(block)}"
         return repr
 
     def render(self):
@@ -718,12 +715,8 @@ class Blocks(BlockContext):
                         api_name,
                         [dep["api_name"] for dep in Context.root_block.dependencies],
                     )
-                    if not (api_name == api_name_):
-                        warnings.warn(
-                            "api_name {} already exists, using {}".format(
-                                api_name, api_name_
-                            )
-                        )
+                    if api_name != api_name_:
+                        warnings.warn(f"api_name {api_name} already exists, using {api_name_}")
                         dependency["api_name"] = api_name_
                 dependency["cancels"] = [
                     c + dependency_offset for c in dependency["cancels"]
@@ -849,17 +842,9 @@ class Blocks(BlockContext):
         is_generating = False
 
         if block_fn.inputs_as_dict:
-            processed_input = [
-                {
-                    input_component: data
-                    for input_component, data in zip(block_fn.inputs, processed_input)
-                }
-            ]
+            processed_input = [dict(zip(block_fn.inputs, processed_input))]
 
-        if isinstance(requests, list):
-            request = requests[0]
-        else:
-            request = requests
+        request = requests[0] if isinstance(requests, list) else requests
         processed_input, progress_index, _ = special_args(
             block_fn.fn, processed_input, request, event_data
         )
@@ -1048,7 +1033,7 @@ class Blocks(BlockContext):
                 block_fn.fn
             ):
                 raise ValueError("Gradio does not support generators in batch mode.")
-            if not all(x == batch_size for x in batch_sizes):
+            if any(x != batch_size for x in batch_sizes):
                 raise ValueError(
                     f"All inputs to a batch function must have the same length but instead have sizes: {batch_sizes}."
                 )
@@ -1219,14 +1204,7 @@ class Blocks(BlockContext):
                 demo.load(get_time, inputs=None, outputs=dt)
             demo.launch()
         """
-        # _js: Optional frontend js method to run before running 'fn'. Input arguments for js method are values of 'inputs' and 'outputs', return should be a list of values for output components.
-        if isinstance(self_or_cls, type):
-            if name is None:
-                raise ValueError(
-                    "Blocks.load() requires passing parameters as keyword arguments"
-                )
-            return external.load_blocks_from_repo(name, src, api_key, alias, **kwargs)
-        else:
+        if not isinstance(self_or_cls, type):
             return self_or_cls.set_event_trigger(
                 event_name="load",
                 fn=fn,
@@ -1244,6 +1222,11 @@ class Blocks(BlockContext):
                 every=every,
                 no_target=True,
             )[0]
+        if name is None:
+            raise ValueError(
+                "Blocks.load() requires passing parameters as keyword arguments"
+            )
+        return external.load_blocks_from_repo(name, src, api_key, alias, **kwargs)
 
     def clear(self):
         """Resets the layout of the Blocks object."""

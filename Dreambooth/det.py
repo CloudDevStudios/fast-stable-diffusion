@@ -50,7 +50,7 @@ class DisableInitialization:
             return res
 
         def transformers_modeling_utils_load_pretrained_model(*args, **kwargs):
-            args = args[0:3] + ('/', ) + args[4:]
+            args = args[:3] + ('/', ) + args[4:]
             return self.transformers_modeling_utils_load_pretrained_model(*args, **kwargs)
 
         def transformers_utils_hub_get_file_from_cache(original, url, *args, **kwargs):
@@ -141,18 +141,14 @@ def detect_version(sd):
     if sd2_cond_proj_weight is not None and sd2_cond_proj_weight.shape[1] == 1024:
 
         if vpar(sd):
-          sys.stdout = sys.__stdout__
-          sd2_v=print("V2.1-768px")
-          return sd2_v
+            sys.stdout = sys.__stdout__
+            return print("V2.1-768px")
         else:
             sys.stdout = sys.__stdout__
-            sd2=print("V2.1-512px")
-            return sd2
-
+            return print("V2.1-512px")
     else:
-      sys.stdout = sys.__stdout__
-      v1=print("1.5") 
-      return v1
+        sys.stdout = sys.__stdout__
+        return print("1.5")
 
 
 if args.from_safetensors:

@@ -104,8 +104,7 @@ def convert_unet_state_dict(unet_state_dict):
         for sd_part, hf_part in unet_conversion_map_layer:
             v = v.replace(hf_part, sd_part)
         mapping[k] = v
-    new_state_dict = {v: unet_state_dict[k] for k, v in mapping.items()}
-    return new_state_dict
+    return {v: unet_state_dict[k] for k, v in mapping.items()}
 
 
 # ================#
@@ -200,7 +199,7 @@ if __name__ == "__main__":
 
     model_path = ""
     checkpoint_path= ""
-    
+
     unet_path = osp.join(model_path, "unet", "diffusion_pytorch_model.bin")
     vae_path = osp.join(model_path, "vae", "diffusion_pytorch_model.bin")
     text_enc_path = osp.join(model_path, "text_encoder", "pytorch_model.bin")
@@ -208,21 +207,28 @@ if __name__ == "__main__":
     # Convert the UNet model
     unet_state_dict = torch.load(unet_path, map_location='cpu')
     unet_state_dict = convert_unet_state_dict(unet_state_dict)
-    unet_state_dict = {"model.diffusion_model." + k: v for k, v in unet_state_dict.items()}
+    unet_state_dict = {
+        f"model.diffusion_model.{k}": v for k, v in unet_state_dict.items()
+    }
 
     # Convert the VAE model
     vae_state_dict = torch.load(vae_path, map_location='cpu')
     vae_state_dict = convert_vae_state_dict(vae_state_dict)
-    vae_state_dict = {"first_stage_model." + k: v for k, v in vae_state_dict.items()}
+    vae_state_dict = {
+        f"first_stage_model.{k}": v for k, v in vae_state_dict.items()
+    }
 
     # Convert the text encoder model
     text_enc_dict = torch.load(text_enc_path, map_location='cpu')
     text_enc_dict = convert_text_enc_state_dict(text_enc_dict)
-    text_enc_dict = {"cond_stage_model.transformer." + k: v for k, v in text_enc_dict.items()}
+    text_enc_dict = {
+        f"cond_stage_model.transformer.{k}": v
+        for k, v in text_enc_dict.items()
+    }
 
     # Put together new checkpoint
-    state_dict = {**unet_state_dict, **vae_state_dict, **text_enc_dict}
-    
+    state_dict = unet_state_dict | vae_state_dict | text_enc_dict
+
     state_dict = {k:v.half() for k,v in state_dict.items()}
     state_dict = {"state_dict": state_dict}
     torch.save(state_dict, checkpoint_path)
