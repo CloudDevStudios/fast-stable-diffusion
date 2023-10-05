@@ -184,11 +184,10 @@ class Block:
 
         if isinstance(outputs, set):
             outputs = sorted(outputs, key=lambda x: x._id)
-        else:
-            if outputs is None:
-                outputs = []
-            elif not isinstance(outputs, list):
-                outputs = [outputs]
+        elif outputs is None:
+            outputs = []
+        elif not isinstance(outputs, list):
+            outputs = [outputs]
 
         if fn is not None and not cancels:
             check_function_inputs_match(fn, inputs, inputs_as_dict)
@@ -215,10 +214,8 @@ class Block:
             api_name_ = utils.append_unique_suffix(
                 api_name, [dep["api_name"] for dep in Context.root_block.dependencies]
             )
-            if not (api_name == api_name_):
-                warnings.warn(
-                    "api_name {} already exists, using {}".format(api_name, api_name_)
-                )
+            if api_name != api_name_:
+                warnings.warn(f"api_name {api_name} already exists, using {api_name_}")
                 api_name = api_name_
 
         dependency = {
@@ -546,7 +543,7 @@ class Blocks(BlockContext):
         self.api_open = True
 
         self.ip_address = None
-        self.is_space = True if os.getenv("SYSTEM") == "spaces" else False
+        self.is_space = os.getenv("SYSTEM") == "spaces"
         self.favicon_path = None
         self.auth = None
         self.dev_mode = True
@@ -595,7 +592,7 @@ class Blocks(BlockContext):
             block_config["props"].pop("name", None)
             style = block_config["props"].pop("style", None)
             if block_config["props"].get("root_url") is None and root_url:
-                block_config["props"]["root_url"] = root_url + "/"
+                block_config["props"]["root_url"] = f"{root_url}/"
             block = cls(**block_config["props"])
             if style:
                 block.style(**style)
@@ -672,11 +669,11 @@ class Blocks(BlockContext):
                 repr += "\n inputs:"
                 for input_id in dependency["inputs"]:
                     block = self.blocks[input_id]
-                    repr += "\n |-{}".format(str(block))
+                    repr += f"\n |-{str(block)}"
                 repr += "\n outputs:"
                 for output_id in dependency["outputs"]:
                     block = self.blocks[output_id]
-                    repr += "\n |-{}".format(str(block))
+                    repr += f"\n |-{str(block)}"
         return repr
 
     def render(self):
@@ -700,12 +697,8 @@ class Blocks(BlockContext):
                         api_name,
                         [dep["api_name"] for dep in Context.root_block.dependencies],
                     )
-                    if not (api_name == api_name_):
-                        warnings.warn(
-                            "api_name {} already exists, using {}".format(
-                                api_name, api_name_
-                            )
-                        )
+                    if api_name != api_name_:
+                        warnings.warn(f"api_name {api_name} already exists, using {api_name_}")
                         dependency["api_name"] = api_name_
                 dependency["cancels"] = [
                     c + dependency_offset for c in dependency["cancels"]
@@ -810,12 +803,7 @@ class Blocks(BlockContext):
         start = time.time()
 
         if block_fn.inputs_as_dict:
-            processed_input = [
-                {
-                    input_component: data
-                    for input_component, data in zip(block_fn.inputs, processed_input)
-                }
-            ]
+            processed_input = [dict(zip(block_fn.inputs, processed_input))]
 
         if iterator is None:  # If not a generator function that has already run
             if inspect.iscoroutinefunction(block_fn.fn):
@@ -900,7 +888,7 @@ class Blocks(BlockContext):
         dependency = self.dependencies[fn_index]
         batch = dependency["batch"]
 
-        if type(predictions) is dict and len(predictions) > 0:
+        if type(predictions) is dict and predictions:
             predictions = convert_component_dict_to_list(
                 dependency["outputs"], predictions
             )
@@ -961,7 +949,7 @@ class Blocks(BlockContext):
                 block_fn.fn
             ):
                 raise ValueError("Gradio does not support generators in batch mode.")
-            if not all(x == batch_size for x in batch_sizes):
+            if any(x != batch_size for x in batch_sizes):
                 raise ValueError(
                     f"All inputs to a batch function must have the same length but instead have sizes: {batch_sizes}."
                 )
@@ -1105,14 +1093,7 @@ class Blocks(BlockContext):
                 demo.load(get_time, inputs=None, outputs=dt)
             demo.launch()
         """
-        # _js: Optional frontend js method to run before running 'fn'. Input arguments for js method are values of 'inputs' and 'outputs', return should be a list of values for output components.
-        if isinstance(self_or_cls, type):
-            if name is None:
-                raise ValueError(
-                    "Blocks.load() requires passing parameters as keyword arguments"
-                )
-            return external.load_blocks_from_repo(name, src, api_key, alias, **kwargs)
-        else:
+        if not isinstance(self_or_cls, type):
             return self_or_cls.set_event_trigger(
                 event_name="load",
                 fn=fn,
@@ -1122,6 +1103,11 @@ class Blocks(BlockContext):
                 no_target=True,
                 every=every,
             )
+        if name is None:
+            raise ValueError(
+                "Blocks.load() requires passing parameters as keyword arguments"
+            )
+        return external.load_blocks_from_repo(name, src, api_key, alias, **kwargs)
 
     def clear(self):
         """Resets the layout of the Blocks object."""
